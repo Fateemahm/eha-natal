@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "UserProfile" ALTER COLUMN "dateOfBirth" SET DATA TYPE TEXT,
+ALTER COLUMN "estimatedDueDate" SET DATA TYPE TEXT;
