@@ -1,25 +1,32 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useSession } from 'next-auth/react';
 
+const EMPTY_PROFILE = {};
 const profileFields = [
-	{ name: 'firstName', label: 'First name', required: true },
-	{ name: 'lastName', label: 'Last name', required: true },
-	{ name: 'email', label: 'Email address', type: 'email', required: true },
-	{ name: 'phone', label: 'Phone number', type: 'tel' },
+	{ name: 'weight', label: 'Weight (kg)', type: 'number', min: 0 },
+	{ name: 'height', label: 'Height (cm)', type: 'number', min: 0 },
 	{ name: 'dateOfBirth', label: 'Date of birth', type: 'date' },
-	{ name: 'gender', label: 'Gender', type: 'select', options: ['Female', 'Male', 'Non-binary', 'Prefer not to say'] },
-	{ name: 'occupation', label: 'Occupation' },
+	{ name: 'gravida', label: 'Gravida', type: 'number', min: 0 },
+	{ name: 'estimatedDueDate', label: 'Expected due date', type: 'date' },
+	{ name: 'currentTrimester', label: 'Current trimester', type: 'number', min: 0, max: 3 },
 	{ name: 'address', label: 'Street address', wide: true },
-	{ name: 'city', label: 'City' },
-	{ name: 'state', label: 'State / Province' },
-	{ name: 'postalCode', label: 'Postal code' },
-	{ name: 'country', label: 'Country' },
+	{ name: 'stateOfOrigin', label: 'State of origin' },
+	{ name: 'allergies', label: 'Allergies' },
+	{ name: 'conceptionDate', label: 'Conception date', type: 'date' },
+	{ name: 'partner', label: 'Partners name' },
+	{ name: 'bloodgroup', label: 'Blood group' },
 	{ name: 'bio', label: 'About you', type: 'textarea', wide: true },
+	{ name: 'genoType', label: 'Genotype', required: true },
+	{ name: 'phone', label: 'Phone number', type: 'string', required: true }
+
 ];
 
-export default function CompleteProfileModal({ isOpen = false, onClose, onSubmit, profile = {} }) {
+export default function CompleteProfileModal({ isOpen = false, onClose, onSubmit, profile = EMPTY_PROFILE }) {
 	const [formData, setFormData] = useState(profile);
+    const { data: session } = useSession();
 
 	useEffect(() => {
 		setFormData(profile || {});
@@ -43,7 +50,14 @@ export default function CompleteProfileModal({ isOpen = false, onClose, onSubmit
 
 	const handleSubmit = (event) => {
 		event.preventDefault();
-		onSubmit?.(formData);
+		console.log('Submitting profile data:', formData);
+		try {
+			const response = axios.post('/api/user-profile', 
+				{ ...formData, userId: session?.user?.id }
+			);
+		} catch (error) {
+			console.error('Error submitting profile data:', error);
+		}
 	};
 
 	return (

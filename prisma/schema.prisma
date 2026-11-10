@@ -35,8 +35,12 @@ model UserProfile{
   stateOfOrigin       String?
   allergies           String?
   bloodGroup          String?
-  genoType           String?
+  genoType            String?
   gravida             String?
+  bio                 String?
+  conceptionDate      String?
+  address             String?
+  phone               String?
   user   User @relation(fields: [userId], references: [id])
   userId String  @unique // Foreign key with a unique constraint
 }

@@ -61,13 +61,19 @@ export async function POST(request) {
     const stringFields = [
       "weight",
       "height",
-      "EDD",
       "partner",
       "stateOfOrigin",
       "allergies",
       "bloodGroup",
-      "bloodType",
       "gravida",
+      "estimatedDueDate",
+      "currentTrimester",
+      "dateOfBirth",
+      "genoType",
+      "address",
+      "bio",
+      "conceptionDate",
+      "phone"
     ];
 
     const data = {};
@@ -202,7 +208,6 @@ export async function PUT(request) {
       "bloodType",
       "gravida",
       "estimatedDueDate",
-      "curremtTrimester",
       "dateofBirth"
     ];
 
