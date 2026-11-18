@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { calculateCurrentTrimester } from "@/lib/pregnancy";
 
 function requireDevelopmentMode() {
   return process.env.NODE_ENV === "development";
@@ -49,7 +50,7 @@ export async function POST(request) {
     const body = await request.json();
     const { userId } = body;
 
-    // Validate userId
+    // 1. Validate userId
     if (typeof userId !== "string" || !userId.trim()) {
       return Response.json(
         { message: "A valid userId is required." },
@@ -57,7 +58,10 @@ export async function POST(request) {
       );
     }
 
-    // Only accept fields defined for the profile.
+    // 2. Create an empty object for approved profile fields
+    const data = {};
+
+    // 3. Fields that should be strings or null
     const stringFields = [
       "weight",
       "height",
@@ -67,7 +71,6 @@ export async function POST(request) {
       "bloodGroup",
       "gravida",
       "estimatedDueDate",
-      "currentTrimester",
       "dateOfBirth",
       "genoType",
       "address",
@@ -76,8 +79,7 @@ export async function POST(request) {
       "phone"
     ];
 
-    const data = {};
-
+    // 4. Validate and collect string fields
     for (const field of stringFields) {
       if (body[field] !== undefined) {
         if (
@@ -94,7 +96,7 @@ export async function POST(request) {
       }
     }
 
-    // Validate DOB
+    // 6. Validate DOB if your schema uses this field
     if (body.DOB !== undefined) {
       if (body.DOB === null) {
         data.DOB = null;
@@ -117,7 +119,7 @@ export async function POST(request) {
       }
     }
 
-    // Confirm that the user exists.
+    // 7. Confirm that the user exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -130,7 +132,7 @@ export async function POST(request) {
       );
     }
 
-    // Check whether this user already has a profile.
+    // 8. Check whether this user already has a profile
     const existingProfile = await prisma.userProfile.findUnique({
       where: { userId },
       select: { id: true },
@@ -138,14 +140,17 @@ export async function POST(request) {
 
     if (existingProfile) {
       return Response.json(
-        {
-          message: "This user already has a profile.",
-        },
+        { message: "This user already has a profile." },
         { status: 409 }
       );
     }
 
-    // Create a new profile only.
+    data.currentTrimester = calculateCurrentTrimester(
+      data.estimatedDueDate,
+      data.conceptionDate
+    );
+
+    // 9. Create the profile
     const profile = await prisma.userProfile.create({
       data: {
         userId,
@@ -160,17 +165,13 @@ export async function POST(request) {
       },
       { status: 201 }
     );
+
   } catch (error) {
     console.error("Error creating profile:", error);
 
-    // Handle duplicate-profile constraint violations.
-    if (
-      error.code === "P2002"
-    ) {
+    if (error.code === "P2002") {
       return Response.json(
-        {
-          message: "This user already has a profile.",
-        },
+        { message: "This user already has a profile." },
         { status: 409 }
       );
     }
@@ -205,10 +206,14 @@ export async function PUT(request) {
       "stateOfOrigin",
       "allergies",
       "bloodGroup",
-      "bloodType",
       "gravida",
       "estimatedDueDate",
-      "dateofBirth"
+      "dateOfBirth",
+      "genoType",
+      "address",
+      "bio",
+      "conceptionDate",
+      "phone"
     ];
 
     const data = {};
@@ -263,7 +268,11 @@ export async function PUT(request) {
     // 6. Check whether the profile exists
     const existingProfile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: { id: true },
+      select: {
+        id: true,
+        estimatedDueDate: true,
+        conceptionDate: true
+      },
     });
 
     if (!existingProfile) {
@@ -272,6 +281,15 @@ export async function PUT(request) {
         { status: 404 }
       );
     }
+
+    data.currentTrimester = calculateCurrentTrimester(
+      data.estimatedDueDate !== undefined
+        ? data.estimatedDueDate
+        : existingProfile.estimatedDueDate,
+      data.conceptionDate !== undefined
+        ? data.conceptionDate
+        : existingProfile.conceptionDate
+    );
 
     // 7. Update the existing profile
     const updatedProfile = await prisma.userProfile.update({
