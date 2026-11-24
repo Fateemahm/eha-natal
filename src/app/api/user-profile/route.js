@@ -1,20 +1,61 @@
+
 import { prisma } from "@/lib/prisma";
 import { calculateCurrentTrimester } from "@/lib/pregnancy";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-function requireDevelopmentMode() {
-  return process.env.NODE_ENV === "development";
+// Get the logged-in user's ID from their server-side session
+async function getAuthenticatedUserId() {
+  const session = await getServerSession(authOptions);
+  return session?.user?.id || null;
 }
 
-// GET /api/user-profile?userId=USER_ID
-export async function GET(request) {
+// Fields that can be saved in a user profile
+const allowedFields = [
+  "weight",
+  "height",
+  "partner",
+  "stateOfOrigin",
+  "allergies",
+  "bloodGroup",
+  "gravida",
+  "estimatedDueDate",
+  "dateOfBirth",
+  "genoType",
+  "address",
+  "bio",
+  "conceptionDate",
+  "phone",
+];
+
+// Validate the profile data
+function validateProfileFields(body) {
+  const data = {};
+
+  for (const field of allowedFields) {
+    if (body[field] !== undefined) {
+      if (body[field] !== null && typeof body[field] !== "string") {
+        return {
+          error: `${field} must be a string or null.`,
+        };
+      }
+
+      data[field] = body[field];
+    }
+  }
+
+  return { data };
+}
+
+// GET: Fetch the logged-in user's profile
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userId = await getAuthenticatedUserId();
 
     if (!userId) {
       return Response.json(
-        { message: "userId is required." },
-        { status: 400 }
+        { message: "Unauthorized. Please sign in." },
+        { status: 401 }
       );
     }
 
@@ -22,20 +63,25 @@ export async function GET(request) {
       where: { userId },
       include: {
         user: {
-          select: { email: true, firstName: true, lastName: true }
-        }
-      }
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
     });
 
     if (!profile) {
       return Response.json(
         { message: "Profile not found." },
+        { status: 200 }
       );
     }
 
     return Response.json({ profile }, { status: 200 });
   } catch (error) {
-    console.error("Error fetching profile:", error);
+    console.error("GET profile error:", error);
 
     return Response.json(
       { message: "Failed to fetch profile." },
@@ -44,117 +90,58 @@ export async function GET(request) {
   }
 }
 
-// POST /api/user-profile
+// POST: Create a profile for the logged-in user
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { userId } = body;
+    const userId = await getAuthenticatedUserId();
 
-    // 1. Validate userId
-    if (typeof userId !== "string" || !userId.trim()) {
+    if (!userId) {
       return Response.json(
-        { message: "A valid userId is required." },
+        { message: "Unauthorized. Please sign in." },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    const validation = validateProfileFields(body);
+
+    if (validation.error) {
+      return Response.json(
+        { message: validation.error },
         { status: 400 }
       );
     }
 
-    // 2. Create an empty object for approved profile fields
-    const data = {};
+    const {
+      estimatedDueDate,
+      conceptionDate,
+      ...profileData
+    } = validation.data;
 
-    // 3. Fields that should be strings or null
-    const stringFields = [
-      "weight",
-      "height",
-      "partner",
-      "stateOfOrigin",
-      "allergies",
-      "bloodGroup",
-      "gravida",
-      "estimatedDueDate",
-      "dateOfBirth",
-      "genoType",
-      "address",
-      "bio",
-      "conceptionDate",
-      "phone"
-    ];
-
-    // 4. Validate and collect string fields
-    for (const field of stringFields) {
-      if (body[field] !== undefined) {
-        if (
-          body[field] !== null &&
-          typeof body[field] !== "string"
-        ) {
-          return Response.json(
-            { message: `${field} must be text or null.` },
-            { status: 400 }
-          );
-        }
-
-        data[field] = body[field];
-      }
-    }
-
-    // 6. Validate DOB if your schema uses this field
-    if (body.DOB !== undefined) {
-      if (body.DOB === null) {
-        data.DOB = null;
-      } else if (typeof body.DOB === "string") {
-        const date = new Date(body.DOB);
-
-        if (Number.isNaN(date.getTime())) {
-          return Response.json(
-            { message: "DOB must be a valid date." },
-            { status: 400 }
-          );
-        }
-
-        data.DOB = date;
-      } else {
-        return Response.json(
-          { message: "DOB must be a date string or null." },
-          { status: 400 }
-        );
-      }
-    }
-
-    // 7. Confirm that the user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    });
-
-    if (!user) {
-      return Response.json(
-        { message: "User not found." },
-        { status: 404 }
-      );
-    }
-
-    // 8. Check whether this user already has a profile
     const existingProfile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: { id: true },
     });
 
     if (existingProfile) {
       return Response.json(
-        { message: "This user already has a profile." },
+        { message: "A profile already exists for this user." },
         { status: 409 }
       );
     }
 
-    data.currentTrimester = calculateCurrentTrimester(
-      data.estimatedDueDate,
-      data.conceptionDate
+    const currentTrimester = calculateCurrentTrimester(
+      estimatedDueDate,
+      conceptionDate
     );
 
-    // 9. Create the profile
     const profile = await prisma.userProfile.create({
       data: {
+        ...profileData,
+        estimatedDueDate,
+        conceptionDate,
+        currentTrimester,
         userId,
-        ...data,
       },
     });
 
@@ -165,13 +152,12 @@ export async function POST(request) {
       },
       { status: 201 }
     );
-
   } catch (error) {
-    console.error("Error creating profile:", error);
+    console.error("POST profile error:", error);
 
     if (error.code === "P2002") {
       return Response.json(
-        { message: "This user already has a profile." },
+        { message: "A profile already exists for this user." },
         { status: 409 }
       );
     }
@@ -183,131 +169,80 @@ export async function POST(request) {
   }
 }
 
-// PUT /api/user-profile
+// PUT: Update the logged-in user's profile
 export async function PUT(request) {
   try {
-    // 1. Get the request body
+    const userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      return Response.json(
+        { message: "Unauthorized. Please sign in." },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
-    const { userId } = body;
 
-    // 2. Validate userId
-    if (typeof userId !== "string" || !userId.trim()) {
+    const validation = validateProfileFields(body);
+
+    if (validation.error) {
       return Response.json(
-        { message: "A valid userId is required." },
+        { message: validation.error },
         { status: 400 }
       );
     }
 
-    // 3. Prepare the fields we allow users to update
-    const stringFields = [
-      "weight",
-      "height",
-      "partner",
-      "stateOfOrigin",
-      "allergies",
-      "bloodGroup",
-      "gravida",
-      "estimatedDueDate",
-      "dateOfBirth",
-      "genoType",
-      "address",
-      "bio",
-      "conceptionDate",
-      "phone"
-    ];
+    const {
+      estimatedDueDate,
+      conceptionDate,
+      ...profileData
+    } = validation.data;
 
-    const data = {};
-
-    for (const field of stringFields) {
-      if (body[field] !== undefined) {
-        if (
-          body[field] !== null &&
-          typeof body[field] !== "string"
-        ) {
-          return Response.json(
-            { message: `${field} must be text or null.` },
-            { status: 400 }
-          );
-        }
-
-        data[field] = body[field];
-      }
-    }
-
-    // 4. Validate DOB
-    if (body.DOB !== undefined) {
-      if (body.DOB === null) {
-        data.DOB = null;
-      } else if (typeof body.DOB === "string") {
-        const date = new Date(body.DOB);
-
-        if (Number.isNaN(date.getTime())) {
-          return Response.json(
-            { message: "DOB must be a valid date." },
-            { status: 400 }
-          );
-        }
-
-        data.DOB = date;
-      } else {
-        return Response.json(
-          { message: "DOB must be a date string or null." },
-          { status: 400 }
-        );
-      }
-    }
-
-    // 5. Make sure there is at least one field to update
-    if (Object.keys(data).length === 0) {
-      return Response.json(
-        { message: "Provide at least one field to update." },
-        { status: 400 }
-      );
-    }
-
-    // 6. Check whether the profile exists
     const existingProfile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: {
-        id: true,
-        estimatedDueDate: true,
-        conceptionDate: true
-      },
     });
 
     if (!existingProfile) {
       return Response.json(
-        { message: "Profile not found. Create a profile first." },
+        { message: "Profile not found." },
         { status: 404 }
       );
     }
 
-    data.currentTrimester = calculateCurrentTrimester(
-      data.estimatedDueDate !== undefined
-        ? data.estimatedDueDate
-        : existingProfile.estimatedDueDate,
-      data.conceptionDate !== undefined
-        ? data.conceptionDate
-        : existingProfile.conceptionDate
+    const finalDueDate =
+      estimatedDueDate !== undefined
+        ? estimatedDueDate
+        : existingProfile.estimatedDueDate;
+
+    const finalConceptionDate =
+      conceptionDate !== undefined
+        ? conceptionDate
+        : existingProfile.conceptionDate;
+
+    const currentTrimester = calculateCurrentTrimester(
+      finalDueDate,
+      finalConceptionDate
     );
 
-    // 7. Update the existing profile
-    const updatedProfile = await prisma.userProfile.update({
+    const profile = await prisma.userProfile.update({
       where: { userId },
-      data,
+      data: {
+        ...profileData,
+        ...(estimatedDueDate !== undefined && { estimatedDueDate }),
+        ...(conceptionDate !== undefined && { conceptionDate }),
+        currentTrimester,
+      },
     });
 
-    // 8. Return the updated profile
     return Response.json(
       {
         message: "Profile updated successfully.",
-        profile: updatedProfile,
+        profile,
       },
       { status: 200 }
     );
-
   } catch (error) {
-    console.error("Error updating profile:", error);
+    console.error("PUT profile error:", error);
 
     return Response.json(
       { message: "Failed to update profile." },
@@ -316,28 +251,22 @@ export async function PUT(request) {
   }
 }
 
- // DELETE /api/user-profile?userId=USER_ID
-export async function DELETE(request) {
+// DELETE: Delete the logged-in user's profile
+export async function DELETE() {
   try {
-    // 1. Get userId from the URL
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userId = await getAuthenticatedUserId();
 
-    // 2. Validate userId
-    if (!userId || !userId.trim()) {
+    if (!userId) {
       return Response.json(
-        { message: "A valid userId is required." },
-        { status: 400 }
+        { message: "Unauthorized. Please sign in." },
+        { status: 401 }
       );
     }
 
-    // 3. Check whether the profile exists
     const existingProfile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: { id: true },
     });
 
-    // 4. If profile doesn't exist, return 404
     if (!existingProfile) {
       return Response.json(
         { message: "Profile not found." },
@@ -345,19 +274,16 @@ export async function DELETE(request) {
       );
     }
 
-    // 5. Delete the profile
     await prisma.userProfile.delete({
       where: { userId },
     });
 
-    // 6. Return success response
     return Response.json(
       { message: "Profile deleted successfully." },
       { status: 200 }
     );
-
   } catch (error) {
-    console.error("Error deleting profile:", error);
+    console.error("DELETE profile error:", error);
 
     return Response.json(
       { message: "Failed to delete profile." },

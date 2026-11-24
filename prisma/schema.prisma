@@ -1,46 +1,139 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model User{ 
-  id         String    @id @default(cuid())
-  email      String @unique
-  firstName  String
-  lastName   String?
-  password   String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt()
-  profile UserProfile? 
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  firstName    String
+  lastName     String?
+  password     String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt()
+  profile      UserProfile?
+  appointments Appointment[]
 }
 
-model UserProfile{
-  id                  String     @id @default(cuid())
-  weight              String?
-  height              String?
-  dateOfBirth         String?
-  estimatedDueDate    String?
-  currentTrimester    Int?
-  partner             String?
-  stateOfOrigin       String?
-  allergies           String?
-  bloodGroup          String?
-  genoType            String?
-  gravida             String?
-  bio                 String?
-  conceptionDate      String?
-  address             String?
-  phone               String?
-  user   User @relation(fields: [userId], references: [id])
-  userId String  @unique // Foreign key with a unique constraint
+model UserProfile {
+  id               String  @id @default(cuid())
+  weight           String?
+  height           String?
+  dateOfBirth      String?
+  estimatedDueDate String?
+  currentTrimester Int?
+  partner          String?
+  stateOfOrigin    String?
+  allergies        String?
+  bloodGroup       String?
+  genoType         String?
+  gravida          String?
+  bio              String?
+  conceptionDate   String?
+  address          String?
+  phone            String?
+  user             User    @relation(fields: [userId], references: [id])
+  userId           String  @unique // Foreign key with a unique constraint
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+model State {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  lgas      LGA[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LGA {
+  id         String               @id @default(cuid())
+  name       String
+  stateId    String
+  state      State                @relation(fields: [stateId], references: [id])
+  facilities HealthcareFacility[]
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@unique([name, stateId])
+}
+
+model HealthcareFacility {
+  id        String            @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  lgaId     String
+  lga       LGA               @relation(fields: [lgaId], references: [id])
+  services  FacilityService[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model AppointmentService {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  description String?
+  facilities  FacilityService[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model FacilityService {
+  id         String @id @default(cuid())
+  facilityId String
+  serviceId  String
+
+  facility HealthcareFacility @relation(fields: [facilityId], references: [id])
+  service  AppointmentService @relation(fields: [serviceId], references: [id])
+  slots    AppointmentSlot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([facilityId, serviceId])
+}
+
+model AppointmentSlot {
+  id                String          @id @default(cuid())
+  facilityServiceId String
+  facilityService   FacilityService @relation(fields: [facilityServiceId], references: [id])
+
+  startAt     DateTime
+  endAt       DateTime
+  capacity    Int      @default(1)
+  bookedCount Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([facilityServiceId, startAt])
+}
+
+model Appointment {
+  id     String @id @default(cuid())
+  userId String
+  slotId String
+
+  user User            @relation(fields: [userId], references: [id])
+  slot AppointmentSlot @relation(fields: [slotId], references: [id])
+
+  status    AppointmentStatus @default(BOOKED)
+  notes     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([userId, slotId])
+  @@index([userId, status])
 }
