@@ -34,7 +34,7 @@ export default function Home() {
             {/* Call-to-action buttons */}
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
-                href="/register"
+                href="/sign-up"
                 className="rounded-full bg-[#805B91] px-8 py-4 text-center text-sm font-semibold text-white shadow-lg shadow-[#805B91]/20 transition hover:-translate-y-0.5 hover:bg-[#684477]"
               >
                 Get started
@@ -182,7 +182,7 @@ export default function Home() {
             </p>
 
             <Link
-              href="/register"
+              href="/sign-up"
               className="mt-8 inline-block rounded-full bg-white px-8 py-4 text-sm font-bold text-[#684477] transition hover:bg-[#F5EDF7]"
             >
               Create your account

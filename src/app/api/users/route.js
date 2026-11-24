@@ -1,14 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 
-// export async function GET() {
-//   return Response.json({ 
-//     // Changed the text here from hello world to Users API is working
-//     message: "Users API is working"
-//   })
-// }
-
-
 export async function GET() {
   try {
     const users = await prisma.user.findMany({
